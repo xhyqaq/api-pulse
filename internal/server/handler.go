@@ -60,11 +60,14 @@ func (h *ApiNotifyHandler) HandleWebhook(w http.ResponseWriter, r *http.Request)
 	}).Info("接收到 Webhook")
 
 	// 检查事件类型
-	if payload.Event != "API_UPDATED" {
-		h.logger.WithField("event", payload.Event).Info("忽略非 API 更新事件")
+	if payload.Event != "API_UPDATED" && payload.Event != "API_CREATED" {
+		h.logger.WithField("event", payload.Event).Info("忽略非 API 更新/创建事件")
 		w.WriteHeader(http.StatusOK)
 		return
 	}
+
+	// 标记是否为新创建的 API
+	isNewApi := payload.Event == "API_CREATED"
 
 	// 解析 webhook 内容获取 API 名称和路径
 	apiName, apiPath, err := apifox.ParseWebhookContent(payload.Content)
@@ -134,6 +137,35 @@ func (h *ApiNotifyHandler) HandleWebhook(w http.ResponseWriter, r *http.Request)
 			return
 		}
 
+		// 检查责任人过滤
+		if h.apifoxClient.GetConfig().ResponsibleId != apiDetailResp.Data.ResponsibleID {
+
+			h.logger.WithFields(logrus.Fields{
+				"api_name":              oldApiInfo.Name,
+				"api_id":                oldApiInfo.ApiID,
+				"config_responsible_id": h.apifoxClient.GetConfig().ResponsibleId,
+				"api_responsible_id":    apiDetailResp.Data.ResponsibleID,
+			}).Info("API负责人与配置的负责人不匹配，跳过通知")
+
+			// 仍然保存API信息，但不发送通知
+			apiInfo := apifox.StoredApiInfo{
+				ApiKey:    oldApiInfo.ApiKey,
+				ApiID:     apiDetailResp.Data.ID,
+				Name:      oldApiInfo.Name,
+				Method:    strings.ToLower(apiDetailResp.Data.Method),
+				ApiPath:   apiDetailResp.Data.Path,
+				Detail:    apiDetailResp.Data,
+				UpdatedAt: time.Now().Format("2006-01-02 15:04:05"),
+			}
+
+			if err := h.apiStore.SaveApi(apiInfo); err != nil {
+				h.logger.WithError(err).WithField("apiKey", oldApiInfo.ApiKey).Error("更新 API 信息失败")
+			}
+
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
 		// 比较差异
 		diff := h.diffService.CompareApis(oldApiInfo.Detail, apiDetailResp.Data, modifierName, modifiedTime)
 
@@ -193,6 +225,34 @@ func (h *ApiNotifyHandler) HandleWebhook(w http.ResponseWriter, r *http.Request)
 			return
 		}
 
+		// 检查责任人过滤
+		if h.apifoxClient.GetConfig().ResponsibleId != apiDetailResp.Data.ResponsibleID {
+			h.logger.WithFields(logrus.Fields{
+				"api_name":              apiBasic.Name,
+				"api_id":                apiBasic.ID,
+				"config_responsible_id": h.apifoxClient.GetConfig().ResponsibleId,
+				"api_responsible_id":    apiDetailResp.Data.ResponsibleID,
+			}).Info("API负责人与配置的负责人不匹配，跳过通知")
+
+			// 仍然保存API信息，但不发送通知
+			apiInfo := apifox.StoredApiInfo{
+				ApiKey:    apiKey,
+				ApiID:     apiBasic.ID,
+				Name:      apiBasic.Name,
+				Method:    strings.ToLower(apiBasic.Method),
+				ApiPath:   apiBasic.Path,
+				Detail:    apiDetailResp.Data,
+				UpdatedAt: time.Now().Format("2006-01-02 15:04:05"),
+			}
+
+			if err := h.apiStore.SaveApi(apiInfo); err != nil {
+				h.logger.WithError(err).WithField("apiKey", apiKey).Error("更新/保存 API 信息失败")
+			}
+
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
 		// 如果找到旧信息，则比较差异
 		if oldExists {
 			// 比较差异
@@ -210,8 +270,31 @@ func (h *ApiNotifyHandler) HandleWebhook(w http.ResponseWriter, r *http.Request)
 				h.logger.WithField("apiKey", apiKey).Info("API 没有实质性变更，不发送通知")
 			}
 		} else {
-			// 这是一个新API，记录信息但不发送变更通知
-			h.logger.WithField("api_name", apiBasic.Name).Info("检测到新 API，保存信息但不发送变更通知")
+			// 这是一个新API
+			h.logger.WithField("api_name", apiBasic.Name).Info("检测到新 API")
+
+			// 如果是 API_CREATED 事件，发送 API 创建通知
+			if isNewApi {
+				// 创建一个包含新API信息的差异对象
+				createdDiff := &apifox.ApiDiff{
+					ApiID:        apiBasic.ID,
+					Name:         apiBasic.Name,
+					NewPath:      apiBasic.Path,
+					Method:       apiBasic.Method,
+					ModifierName: modifierName,
+					ModifiedTime: modifiedTime,
+					IsNewApi:     true,
+				}
+
+				// 发送API创建通知
+				if err := h.notifyService.SendApiCreatedNotification(*createdDiff); err != nil {
+					h.logger.WithError(err).Error("发送 API 创建通知失败")
+					http.Error(w, "发送通知失败", http.StatusInternalServerError)
+					return
+				}
+			} else {
+				h.logger.WithField("api_name", apiBasic.Name).Info("新 API 未通过创建事件通知，仅保存信息不发送通知")
+			}
 		}
 
 		// 无论如何，都更新/保存最新的API信息

@@ -149,6 +149,62 @@ func (s *NotifyService) buildApiDiffMarkdown(diff apifox.ApiDiff) string {
 	return buffer.String()
 }
 
+// SendApiCreatedNotification 发送 API 创建通知
+func (s *NotifyService) SendApiCreatedNotification(diff apifox.ApiDiff) error {
+	// 构建 Markdown 消息内容
+	title := "API 创建通知"
+	text := s.buildApiCreatedMarkdown(diff)
+
+	message := MarkdownMessage{
+		MsgType: "markdown",
+	}
+	message.Markdown.Title = title
+	message.Markdown.Text = text
+	message.At.IsAtAll = false
+
+	// 将消息序列化为 JSON
+	jsonData, err := json.Marshal(message)
+	if err != nil {
+		s.logger.WithError(err).Error("序列化钉钉消息失败")
+		return err
+	}
+
+	// 发送请求
+	resp, err := s.client.R().
+		SetHeader("Content-Type", "application/json").
+		SetBody(jsonData).
+		Post(s.webhookURL)
+
+	if err != nil {
+		s.logger.WithError(err).Error("发送钉钉通知失败")
+		return err
+	}
+
+	if resp.StatusCode() != 200 {
+		s.logger.WithField("status", resp.Status()).
+			WithField("response", string(resp.Body())).
+			Error("钉钉服务器返回错误")
+		return fmt.Errorf("钉钉服务器返回错误: %s", resp.Status())
+	}
+
+	s.logger.Info("成功发送 API 创建通知到钉钉")
+	return nil
+}
+
+// buildApiCreatedMarkdown 构建 API 创建的 Markdown 内容
+func (s *NotifyService) buildApiCreatedMarkdown(diff apifox.ApiDiff) string {
+	var buffer bytes.Buffer
+
+	buffer.WriteString(fmt.Sprintf("### 🎉 新API创建通知: %s\n\n", diff.Name))
+	buffer.WriteString(fmt.Sprintf("**接口ID:** %d\n\n", diff.ApiID))
+	buffer.WriteString(fmt.Sprintf("**请求方法:** %s\n\n", strings.ToUpper(diff.Method)))
+	buffer.WriteString(fmt.Sprintf("**API路径:** `%s`\n\n", diff.NewPath))
+	buffer.WriteString(fmt.Sprintf("**创建者:** %s\n\n", diff.ModifierName))
+	buffer.WriteString(fmt.Sprintf("**创建时间:** %s\n\n", diff.ModifiedTime))
+
+	return buffer.String()
+}
+
 // ExtractNameTimeFromContent 从 webhook 内容中提取修改者姓名和时间
 func ExtractNameTimeFromContent(content string) (string, string) {
 	lines := strings.Split(content, "\n")

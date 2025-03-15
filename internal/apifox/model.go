@@ -76,6 +76,7 @@ type ApiDetail struct {
 	OperationID      string           `json:"operationId"`
 	CommonParameters CommonParameters `json:"commonParameters"`
 	Visibility       string           `json:"visibility"`
+	ResponsibleID    int              `json:"responsibleId"`
 }
 
 // RequestBody 请求体
@@ -168,4 +169,5 @@ type ApiDiff struct {
 
 	ModifierName string `json:"modifier_name"`
 	ModifiedTime string `json:"modified_time"`
+	IsNewApi     bool   `json:"is_new_api"`
 }

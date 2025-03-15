@@ -4,8 +4,9 @@ server:
 apifox:
   project_id: "x"
   branch_id: "x"
-  authorization: "xx"
+  authorization: "x"
   base_url: "https://api.apifox.com/api/v1"
+  responsible_id: x
 
 dingtalk:
-  webhook_url: "xx"
+  webhook_url: "x"

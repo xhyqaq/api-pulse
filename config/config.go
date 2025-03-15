@@ -22,6 +22,7 @@ type ApifoxConfig struct {
 	BranchID      string `mapstructure:"branch_id"`
 	Authorization string `mapstructure:"authorization"`
 	BaseURL       string `mapstructure:"base_url"`
+	ResponsibleId int    `mapstructure:"responsible_id"`
 }
 
 // DingtalkConfig 钉钉配置

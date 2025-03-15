@@ -53,6 +53,11 @@ func NewClient(cfg *config.ApifoxConfig, logger *logrus.Logger) *Client {
 	}
 }
 
+// GetConfig 返回客户端配置
+func (c *Client) GetConfig() *config.ApifoxConfig {
+	return c.config
+}
+
 // GetApiTreeList 获取项目的 API 树形列表
 func (c *Client) GetApiTreeList() (*ApiTreeListResponse, error) {
 	url := fmt.Sprintf("%s/projects/%s/api-tree-list?locale=zh-CN",
@@ -114,20 +119,11 @@ func (c *Client) GetApiTreeList() (*ApiTreeListResponse, error) {
 
 	// 记录完整的原始响应内容
 	respBody := string(resp.Body())
-	c.logger.WithField("raw_response", respBody).Info("API 树形列表原始响应")
 
 	// 打印 JSON 原始解析结果
 	var rawJson map[string]interface{}
 	if err := json.Unmarshal(resp.Body(), &rawJson); err != nil {
 		c.logger.WithError(err).Error("解析原始 JSON 失败")
-	} else {
-		// 检查 data 字段的类型
-		if data, ok := rawJson["data"]; ok {
-			c.logger.WithFields(logrus.Fields{
-				"data_type": fmt.Sprintf("%T", data),
-				"data":      fmt.Sprintf("%v", data),
-			}).Info("原始 data 字段")
-		}
 	}
 
 	// 解析 JSON 响应
@@ -167,8 +163,7 @@ func (c *Client) GetApiTreeList() (*ApiTreeListResponse, error) {
 	}
 
 	// 数据详情
-	dataJSON, _ := json.Marshal(response.Data)
-	c.logger.WithField("data_json", string(dataJSON)).Info("API 树形列表数据内容")
+	json.Marshal(response.Data)
 
 	return &response, nil
 }
@@ -194,13 +189,6 @@ func (c *Client) GetApiDetail(apiKey string) (*ApiDetailResponse, error) {
 
 	url := fmt.Sprintf("%s/projects/%s/http-apis/%s?locale=zh-CN",
 		c.config.BaseURL, c.config.ProjectID, apiID)
-
-	c.logger.WithFields(logrus.Fields{
-		"url":        url,
-		"project_id": c.config.ProjectID,
-		"branch_id":  c.config.BranchID,
-		"api_id":     apiID,
-	}).Info("获取 API 详情")
 
 	// 创建与树形列表请求相同格式的请求
 	request := c.httpClient.R().
@@ -242,22 +230,12 @@ func (c *Client) GetApiDetail(apiKey string) (*ApiDetailResponse, error) {
 
 	// 记录响应内容
 	respBody := string(resp.Body())
-	c.logger.WithField("response", respBody).Info("API 详情原始响应")
 
 	// 解析原始 JSON 响应
 	var rawJson map[string]interface{}
 	if err := json.Unmarshal(resp.Body(), &rawJson); err != nil {
 		c.logger.WithError(err).Error("解析原始 JSON 失败")
-	} else {
-		// 检查 data 字段的类型
-		if data, ok := rawJson["data"]; ok {
-			c.logger.WithFields(logrus.Fields{
-				"data_type": fmt.Sprintf("%T", data),
-				"data":      fmt.Sprintf("%v", data),
-			}).Info("API 详情 data 字段")
-		}
 	}
-
 	// 使用自定义解析逻辑检测空对象响应
 	if respBody == "{\n\"success\": true,\n\"data\": {}\n}" {
 		c.logger.Warn("API 详情返回空对象，可能需要不同的请求格式或认证")
@@ -340,6 +318,9 @@ func (c *Client) GetApiDetail(apiKey string) (*ApiDetailResponse, error) {
 	}
 	if editorId, ok := dataMap["editorId"].(float64); ok {
 		detail.EditorID = int(editorId)
+	}
+	if responsibleId, ok := dataMap["responsibleId"].(float64); ok {
+		detail.ResponsibleID = int(responsibleId)
 	}
 
 	// 处理 tags 字段
@@ -569,6 +550,9 @@ func (c *Client) extractApiMappingsFromTree(data interface{}, mappings map[strin
 				}
 				if path, ok := apiData["path"].(string); ok {
 					basic.Path = path
+				}
+				if responsibleId, ok := apiData["responsibleId"].(float64); ok {
+					basic.ResponsibleID = int(responsibleId)
 				}
 
 				// 如果方法和路径都不为空，添加到映射中
