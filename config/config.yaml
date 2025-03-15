@@ -1,0 +1,11 @@
+server:
+  port: 9501
+
+apifox:
+  project_id: "x"
+  branch_id: "x"
+  authorization: "xx"
+  base_url: "https://api.apifox.com/api/v1"
+
+dingtalk:
+  webhook_url: "xx"
