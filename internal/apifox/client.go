@@ -70,9 +70,19 @@ func (c *Client) GetApiTreeList() (*ApiTreeListResponse, error) {
 	}).Info("正在获取 API 树形列表")
 
 	// 添加更多诊断信息
+	authTokenLength := len(c.config.Authorization)
+	authTokenPrefix := ""
+	if authTokenLength > 10 {
+		authTokenPrefix = c.config.Authorization[:10] + "..."
+	} else if authTokenLength > 0 {
+		authTokenPrefix = c.config.Authorization + "..."
+	} else {
+		authTokenPrefix = "未设置"
+	}
+
 	c.logger.WithFields(logrus.Fields{
-		"auth_token_length": len(c.config.Authorization),
-		"auth_token_prefix": c.config.Authorization[:10] + "...", // 只记录前10个字符
+		"auth_token_length": authTokenLength,
+		"auth_token_prefix": authTokenPrefix,
 	}).Info("使用的认证信息")
 
 	// 创建与curl命令类似的请求

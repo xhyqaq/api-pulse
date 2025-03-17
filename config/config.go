@@ -1,7 +1,9 @@
 package config
 
 import (
-	"github.com/spf13/viper"
+	"errors"
+	"os"
+	"strconv"
 )
 
 // Config 应用配置结构
@@ -30,19 +32,55 @@ type DingtalkConfig struct {
 	WebhookURL string `mapstructure:"webhook_url"`
 }
 
-// LoadConfig 从配置文件加载配置
+// LoadConfig 直接从环境变量加载配置
 func LoadConfig(path string) (*Config, error) {
-	viper.SetConfigFile(path)
-	viper.AutomaticEnv()
+	// 创建配置实例
+	cfg := &Config{}
 
-	if err := viper.ReadInConfig(); err != nil {
-		return nil, err
+	// 加载服务器配置
+	port, err := strconv.Atoi(getEnvOrDefault("SERVER_PORT", "9501"))
+	if err != nil {
+		port = 9501 // 默认端口
+	}
+	cfg.Server = ServerConfig{
+		Port: port,
 	}
 
-	var cfg Config
-	if err := viper.Unmarshal(&cfg); err != nil {
-		return nil, err
+	// 加载Apifox配置
+	projectID := getEnvOrDefault("APIFOX_PROJECT_ID", "") // 提供默认值
+	branchID := getEnvOrDefault("APIFOX_BRANCH_ID", "")   // 提供默认值
+
+	// 验证必要的配置项
+	if projectID == "" {
+		return nil, errors.New("APIFOX_PROJECT_ID 环境变量未设置")
+	}
+	if branchID == "" {
+		return nil, errors.New("APIFOX_BRANCH_ID 环境变量未设置")
 	}
 
-	return &cfg, nil
+	responsibleId, err := strconv.Atoi(getEnvOrDefault("APIFOX_RESPONSIBLE_ID", ""))
+
+	cfg.Apifox = ApifoxConfig{
+		ProjectID:     projectID,
+		BranchID:      branchID,
+		Authorization: getEnvOrDefault("APIFOX_AUTHORIZATION", ""),
+		BaseURL:       getEnvOrDefault("APIFOX_BASE_URL", "https://api.apifox.com/api/v1"),
+		ResponsibleId: responsibleId,
+	}
+
+	// 加载钉钉配置
+	cfg.Dingtalk = DingtalkConfig{
+		WebhookURL: getEnvOrDefault("DINGTALK_WEBHOOK_URL", ""),
+	}
+
+	return cfg, nil
+}
+
+// getEnvOrDefault 获取环境变量，如果不存在则返回默认值
+func getEnvOrDefault(key, defaultValue string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	return value
 }

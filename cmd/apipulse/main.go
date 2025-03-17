@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"os"
 	"os/signal"
 	"syscall"
@@ -18,16 +17,12 @@ import (
 )
 
 func main() {
-	// 命令行参数
-	configPath := flag.String("config", "config/config.yaml", "配置文件路径")
-	flag.Parse()
-
 	// 初始化日志
 	logger := utils.SetupLogger()
 	logger.Info("API Pulse 服务启动中...")
 
 	// 加载配置
-	cfg, err := config.LoadConfig(*configPath)
+	cfg, err := config.LoadConfig("")
 	if err != nil {
 		logger.WithError(err).Fatal("加载配置失败")
 	}
